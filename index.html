@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amiibo Catalog &amp; ChameleonUltra Dump Manager</title>
+  <meta name="description" content="Browse the full amiibo catalog and manage your own ChameleonUltra NTAG215 dumps. Your dumps never leave your browser." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='%231a1a1a' stroke='%23e60012' stroke-width='8'/><circle cx='50' cy='50' r='14' fill='%23f5f5f0'/></svg>" />
+</head>
+<body>
+  <!-- Drag overlay -->
+  <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
+    <div class="drop-overlay__inner">
+      <div class="drop-overlay__icon">&#x2193;</div>
+      <p>Drop your <code>.bin</code> dumps to add them to your collection</p>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
+
+  <header class="topbar">
+    <div class="topbar__brand">
+      <span class="logo-dot" aria-hidden="true"></span>
+      <h1 class="title">Amiibo<span class="title__dex">Dex</span></h1>
+    </div>
+
+    <div class="topbar__search">
+      <input id="search" type="search" placeholder="Search by name&hellip;" autocomplete="off" aria-label="Search amiibo by name" />
+    </div>
+
+    <div class="topbar__actions">
+      <button id="info-btn" class="icon-btn" title="ChameleonUltra compatibility" aria-label="ChameleonUltra compatibility info">?</button>
+      <button id="export-btn" class="btn btn--ghost" title="Export all owned dumps as a zip">Export all</button>
+      <button id="theme-btn" class="icon-btn" title="Toggle light / dark" aria-label="Toggle theme">&#x263E;</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- Sidebar filters -->
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar__toggle" id="sidebar-toggle" aria-expanded="true">Filters</button>
+      <div class="sidebar__body" id="sidebar-body">
+        <section class="stat" id="stat">
+          <span class="stat__owned" id="stat-owned">0</span> owned
+          <span class="stat__sep">/</span>
+          <span id="stat-total">0</span> total
+        </section>
+
+        <div class="filter-group">
+          <label class="filter-group__label" for="filter-type">Type</label>
+          <select id="filter-type" class="select"><option value="">All types</option></select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-group__label" for="filter-amiibo-series">Amiibo series</label>
+          <select id="filter-amiibo-series" class="select"><option value="">All amiibo series</option></select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-group__label" for="filter-game-series">Game series</label>
+          <select id="filter-game-series" class="select"><option value="">All game series</option></select>
+        </div>
+
+        <label class="check">
+          <input type="checkbox" id="filter-owned" />
+          <span>Owned only</span>
+        </label>
+
+        <button id="clear-filters" class="btn btn--ghost btn--sm">Clear filters</button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+      <div id="loading" class="loading">
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="loading-text">Fetching the amiibo catalog&hellip;</p>
+      </div>
+
+      <!-- Unknown dumps -->
+      <section id="unknown-section" class="unknown-section" hidden>
+        <h2 class="section-title">Unknown dumps <span id="unknown-count" class="pill">0</span></h2>
+        <p class="section-hint">These dumps didn't match any amiibo in the catalog. Their raw IDs are shown below.</p>
+        <div id="unknown-grid" class="unknown-grid"></div>
+      </section>
+
+      <h2 id="catalog-title" class="section-title" hidden>Catalog <span id="result-count" class="pill">0</span></h2>
+      <div id="grid" class="grid" role="list"></div>
+      <p id="empty" class="empty" hidden>No amiibo match your filters.</p>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <p class="footer__legal">
+      This tool does not provide amiibo dump files. Use your own dumps from amiibos you own,
+      dumped with your ChameleonUltra, Proxmark3, or similar device. Catalog metadata via AmiiboAPI.
+    </p>
+    <p class="footer__meta">Built by Domi &middot; MIT License &middot; Data: <a href="https://amiiboapi.com/" target="_blank" rel="noopener">AmiiboAPI</a></p>
+  </footer>
+
+  <!-- Detail modal -->
+  <div id="detail-modal" class="modal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="detail-name">
+      <button class="modal__close" data-close aria-label="Close">&times;</button>
+      <div id="detail-content" class="detail"></div>
+    </div>
+  </div>
+
+  <!-- Info popover modal -->
+  <div id="info-modal" class="modal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel modal__panel--narrow" role="dialog" aria-modal="true" aria-labelledby="info-title">
+      <button class="modal__close" data-close aria-label="Close">&times;</button>
+      <div class="info-pop">
+        <h2 id="info-title">ChameleonUltra compatibility</h2>
+        <p>This app outputs <strong>raw NTAG215 <code>.bin</code> files (540 bytes)</strong> &mdash; exactly what the ChameleonUltra GUI expects. No conversion needed.</p>
+        <ol>
+          <li>Download a dump (single amiibo or <em>Export all</em>).</li>
+          <li>Open the ChameleonUltra GUI / client.</li>
+          <li>Load the <code>.bin</code> into an <strong>MFU</strong> or <strong>NTAG</strong> slot.</li>
+        </ol>
+        <p class="info-pop__note">Dumps are read from <em>your own</em> amiibos. Files stay in your browser (IndexedDB) and are never uploaded.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- JSZip from CDN (per spec). Used for "Export all". -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
